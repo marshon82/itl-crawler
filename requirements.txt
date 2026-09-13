@@ -1,0 +1,3 @@
+# Core engine is zero-dependency (Python 3.10+ stdlib only).
+# Optional:
+# playwright>=1.40
