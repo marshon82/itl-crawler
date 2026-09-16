@@ -7,28 +7,7 @@ import json
 from pathlib import Path
 
 from itl.contacts import Lead
-
-GROK_SYSTEM = (
-    "You score contractor and local-business leads. "
-    "Use only the fields in each record. Do not invent phone numbers, emails, "
-    "or addresses. If a field is empty, say it is missing. "
-    "Return valid JSON."
-)
-
-GROK_USER_TEMPLATE = """Rank these leads for: {profile}
-
-Return a JSON array. Each item:
-- company
-- website
-- fit (0-1)
-- why (one sentence)
-- outreach_angle (one sentence)
-- best_contact (phone or email from the record, or null)
-- missing (list of fields you still need)
-
-Leads:
-{payload}
-"""
+from itl.pack import grok_pack, write_pack
 
 
 def write_jsonl(leads: list[Lead], path: str, compact: bool = True) -> str:
@@ -85,27 +64,10 @@ def llm_pack(
     profile: str = "local contractor leads",
     model: str = "grok",
 ) -> dict:
-    records = [lead.compact() for lead in leads]
-    user = GROK_USER_TEMPLATE.format(
-        profile=profile,
-        payload=json.dumps(records, indent=2, ensure_ascii=False),
-    )
-    return {
-        "schema_version": "1.0",
-        "model_hint": model,
-        "profile": profile,
-        "lead_count": len(records),
-        "messages": [
-            {"role": "system", "content": GROK_SYSTEM},
-            {"role": "user", "content": user},
-        ],
-        "leads": records,
-    }
+    pack = grok_pack(leads, profile)
+    pack["model_hint"] = model
+    return pack
 
 
 def write_llm_pack(leads: list[Lead], path: str, profile: str = "local contractor leads") -> str:
-    out = Path(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    pack = llm_pack(leads, profile=profile)
-    out.write_text(json.dumps(pack, indent=2, ensure_ascii=False), encoding="utf-8")
-    return str(out)
+    return write_pack(leads, path, profile=profile, fmt="grok")

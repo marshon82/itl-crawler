@@ -6,12 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from itl.browser import Browser, available
 from itl.contacts import discover_contact_urls, extract_lead, merge_leads
 from itl.export import write_csv, write_jsonl, write_llm_pack
 from itl.fetch import fetch
+from itl.pack import load_jsonl, write_all, write_pack
 from itl.polite import Gate
 from itl.urls import normalize
 
@@ -65,45 +65,15 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 
 def cmd_pack(args: argparse.Namespace) -> int:
-    rows = []
-    text = Path(args.jsonl).read_text(encoding="utf-8")
-    for line in text.splitlines():
-        line = line.strip()
-        if line:
-            rows.append(json.loads(line))
-    from itl.contacts import ContactHit, Lead
-
-    leads = []
-    for row in rows:
-        lead = Lead(
-            company=row.get("company") or "",
-            url=row.get("website") or row.get("url") or "",
-            address=row.get("address") or "",
-            services=row.get("services") or [],
-            summary=row.get("summary") or "",
-            score=float(row.get("score") or 0),
-            source_pages=row.get("sources") or row.get("source_pages") or [],
-        )
-        for phone in row.get("phones") or ([row["best_phone"]] if row.get("best_phone") else []):
-            if isinstance(phone, dict):
-                lead.phones.append(
-                    ContactHit(**{k: phone[k] for k in ("value", "kind", "confidence", "source") if k in phone})
-                )
-            else:
-                lead.phones.append(
-                    ContactHit(str(phone), "phone", float(row.get("phone_confidence") or 0.6), "import")
-                )
-        for email in row.get("emails") or ([row["best_email"]] if row.get("best_email") else []):
-            if isinstance(email, dict):
-                lead.emails.append(
-                    ContactHit(**{k: email[k] for k in ("value", "kind", "confidence", "source") if k in email})
-                )
-            else:
-                lead.emails.append(
-                    ContactHit(str(email), "email", float(row.get("email_confidence") or 0.6), "import")
-                )
-        leads.append(lead)
-    path = write_llm_pack(leads, args.out, profile=args.profile)
+    leads = load_jsonl(args.jsonl)
+    if not leads:
+        raise SystemExit("no leads in jsonl")
+    if args.all:
+        directory = "packs" if args.out in {"lead_pack.json", None, ""} else args.out
+        written = write_all(leads, directory, profile=args.profile, stem=args.stem)
+        print(json.dumps(written, indent=2))
+        return 0
+    path = write_pack(leads, args.out or "lead_pack.json", profile=args.profile, fmt=args.format)
     print(path)
     return 0
 
@@ -116,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("url")
     extract.add_argument("--jsonl")
     extract.add_argument("--csv")
-    extract.add_argument("--pack", help="Write a Grok/ChatGPT prompt pack")
+    extract.add_argument("--pack", help="Write a Grok prompt pack")
     extract.add_argument("--profile", default="local contractor leads")
     extract.add_argument("--max-pages", type=int, default=5)
     extract.add_argument("--no-follow", action="store_true")
@@ -126,8 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     pack = sub.add_parser("pack", help="Turn a JSONL file into an LLM prompt pack")
     pack.add_argument("jsonl")
-    pack.add_argument("--out", default="llm_pack.json")
+    pack.add_argument("--out", default="lead_pack.json")
     pack.add_argument("--profile", default="local contractor leads")
+    pack.add_argument("--format", default="grok", help="grok | openai | claude | markdown")
+    pack.add_argument("--all", action="store_true", help="Write grok, openai, claude, and markdown packs")
+    pack.add_argument("--stem", default="lead_pack")
     pack.set_defaults(func=cmd_pack)
     return parser
 
