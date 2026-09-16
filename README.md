@@ -3,14 +3,29 @@
 Hybrid crawler: index, graph, sitemaps, ML, lead scoring, and a local brain.
 One SQLite file. Zero required dependencies. Python 3.10+.
 
-Repo is being filled with the 0.2 engine. Clone and, if any files are still landing, grab the full tree from the working copy.
+## Extract public business contacts
+
+No API key. Fetches the site, follows `/contact` and `/about` when present,
+pulls phones, emails, and schema.org data, then writes files a model can read.
 
 ```bash
-python run.py crawl https://yoursite.com --max-pages 300 --depth 3
-python run.py leads "drywall painting remodeling contractor chicago" -v --csv leads.csv
-python run.py brain --profile "drywall contractor chicago"
-python run.py dashboard --port 8080
-python -m unittest tests.test_engine -v
+python run.py extract https://yoursite.com --jsonl leads.jsonl --csv leads.csv --pack grok_pack.json
+python run.py pack leads.jsonl --out grok_pack.json --profile "drywall contractor chicago"
+python -m unittest tests.test_extract -v
+```
+
+Paste `grok_pack.json` `messages` into Grok or ChatGPT. The pack tells the model
+not to invent numbers that were not extracted.
+
+```python
+from itl.fetch import fetch
+from itl.contacts import extract_lead
+from itl.export import write_jsonl, write_llm_pack
+
+page = fetch("https://example.com")
+lead = extract_lead(page.html, page.final_url, page.text)
+write_jsonl([lead], "leads.jsonl")
+write_llm_pack([lead], "grok_pack.json", profile="remodeling contractor")
 ```
 
 ## JS rendering (HTML browser)
@@ -23,35 +38,24 @@ pip install playwright
 playwright install chromium
 ```
 
-```python
-from itl.browser import Browser, available, needs_render, render
-
-# One page
-page = render("https://example.com")
-print(page.title, page.status, page.text[:200])
-
-# Reuse one browser across many URLs
-if available():
-    with Browser() as browser:
-        result = browser.render("https://example.com/contact")
-        if result.ok:
-            html, text = result.html, result.text
-```
-
 Use `needs_render(html, text)` after a cheap stdlib fetch. If the page looks
 like an SPA shell or the extracted text is thin, fall back to Chromium.
 
-## Upgrades in 0.2
+## What 0.2.1 adds
+
+- `itl/contacts.py` — phones, emails, JSON-LD, confidence scores
+- `itl/export.py` — CSV, JSONL, Grok/ChatGPT prompt packs
+- `itl/polite.py` — robots.txt + per-host delay
+- `itl/fetch.py` — stdlib fetch with optional Chromium fallback
+- `itl/browser.py` — Playwright renderer
+
+## Planned engine pieces
 
 1. Trainable lead weights (`run.py label` / `run.py train`)
 2. Hashed n-gram embeddings (`itl/embeddings.py`)
-3. Contact quality scoring (`info@` < named founder)
-4. CSV export of leads and contacts
-5. Incremental recrawl by lastmod and change rate
-6. SimHash near-duplicate detection
-7. Per-host politeness and block detection
-8. JS rendering as automatic fallback (`itl/browser.py`)
-9. Lead workspace APIs in Atlas
-10. Contact-graph influence (`run.py influence --contacts`)
+3. Incremental recrawl by lastmod and change rate
+4. SimHash near-duplicate detection
+5. Lead workspace APIs in Atlas
+6. Contact-graph influence (`run.py influence --contacts`)
 
 Plus `itl/brain.py` — brief, explain, refine, draft, ask. Not a downloaded model. A model of this product that reads the store.
