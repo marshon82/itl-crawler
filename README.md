@@ -10,22 +10,25 @@ pulls phones, emails, and schema.org data, then writes files a model can read.
 
 ```bash
 python run.py extract https://yoursite.com --jsonl leads.jsonl --csv leads.csv --pack grok_pack.json
-python run.py pack leads.jsonl --out grok_pack.json --profile "drywall contractor chicago"
-python -m unittest tests.test_extract -v
+python run.py pack samples/leads.jsonl --format grok --out grok_pack.json --profile "drywall contractor chicago"
+python run.py pack samples/leads.jsonl --all --out packs --profile "drywall contractor chicago"
+python -m unittest tests.test_extract tests.test_pack -v
 ```
 
-Paste `grok_pack.json` `messages` into Grok or ChatGPT. The pack tells the model
-not to invent numbers that were not extracted.
+`--all` writes four packs: Grok, OpenAI, Claude, and Markdown.
+
+Paste `messages` from the Grok pack into chat, or send the OpenAI/Claude `request` object to those APIs. The pack tells the model not to invent numbers that were not extracted.
 
 ```python
 from itl.fetch import fetch
 from itl.contacts import extract_lead
-from itl.export import write_jsonl, write_llm_pack
+from itl.export import write_jsonl
+from itl.pack import write_all
 
 page = fetch("https://example.com")
 lead = extract_lead(page.html, page.final_url, page.text)
 write_jsonl([lead], "leads.jsonl")
-write_llm_pack([lead], "grok_pack.json", profile="remodeling contractor")
+write_all([lead], "packs", profile="remodeling contractor")
 ```
 
 ## JS rendering (HTML browser)
@@ -44,7 +47,8 @@ like an SPA shell or the extracted text is thin, fall back to Chromium.
 ## What 0.2.1 adds
 
 - `itl/contacts.py` — phones, emails, JSON-LD, confidence scores
-- `itl/export.py` — CSV, JSONL, Grok/ChatGPT prompt packs
+- `itl/pack.py` — Grok, OpenAI, Claude, and Markdown packs
+- `itl/export.py` — CSV and JSONL
 - `itl/polite.py` — robots.txt + per-host delay
 - `itl/fetch.py` — stdlib fetch with optional Chromium fallback
 - `itl/browser.py` — Playwright renderer
